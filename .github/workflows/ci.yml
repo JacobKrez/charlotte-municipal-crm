@@ -1,0 +1,61 @@
+# CI for the Charlotte municipal CRM case study.
+#
+# Two steps, in this order, and the order is the point:
+#
+#   1. The pytest suite. Deterministic, offline, no credentials, no network.
+#   2. The quality gate (scripts/gate.py) as the FINAL step. The gate
+#      verifies the published claims (commercial-term scan, personal-data
+#      scan, secret scan, section check, diagram validation, and the
+#      consistency check between the deflection table in README.md and the
+#      arithmetic in src/roi.py).
+#
+# A non-zero exit from either step fails the build. The gate runs last so
+# that a red gate is the final word: even with a green test suite, a
+# repository that leaks a personal identifier or drifts from its own
+# published numbers does not merge.
+#
+# Nothing here needs an API key, a model provider, or a network call beyond
+# installing pytest.
+
+name: ci
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install test dependency
+        run: python3 -m pip install --upgrade pip && python3 -m pip install pytest
+
+      - name: Run pytest suite
+        run: python3 -m pytest -q
+
+      - name: Quality gate (final step, see QUALITY_BAR.md)
+        run: |
+          set +e
+          python3 scripts/gate.py > gate.log 2>&1
+          status=$?
+          set -e
+          cat gate.log
+          if [ $status -ne 0 ]; then
+            echo "::error::quality gate failed with status $status"
+            exit $status
+          fi
+          if grep -q "Traceback" gate.log; then
+            echo "::error::quality gate produced a Python traceback"
+            exit 1
+          fi
