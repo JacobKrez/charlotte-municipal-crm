@@ -70,9 +70,14 @@ removal is listed with its reason rather than left as a silent omission.
   city's, not ours, and several were explicitly confidential. We describe
   the security-review approach generically in **Compliance posture** instead
   of quoting or summarizing that exchange.
-* **Personal contact details.** No names, email addresses, or phone numbers
-  of any real person appear anywhere in this repository, including the
-  city's staff and our own. Where a role matters we name the role.
+* **Personal contact details.** No email address, phone number, or social
+  security number appears in any file in this repository, and no third
+  party is named anywhere in it. That covers the city's staff, its
+  residents, and everyone else whose details appeared in the source
+  material. Where a role matters we name the role, never the person. The
+  only personal name in the repository is the copyright holder on the
+  license, and the only personal identifier in the repository history is
+  the commit author, both of which belong to whoever publishes it.
 * **The full requirement-by-requirement response matrix.** The RFI asked for
   90 numbered capability responses. Those cells were written to a scoring
   rubric, and reproducing them here would add bulk without adding
@@ -346,10 +351,11 @@ part of a municipal proposal that most often turns out to be missing.
 target, not a certification.** Two honest notes on the table above. First,
 the family rows we wrote during the response sum to 171 of 214 controls
 addressed, while the summary line we wrote beside them claimed 174 of 232.
-The discrepancy came from counting the inherited physical-protection
-family in the denominator of one number and not the other. We have
-published the family table as the source of truth and we have not written a
-single headline percentage that we cannot reproduce from the rows.
+The two numbers cannot both come from the same rows, and the difference is
+consistent with the inherited physical-protection family having been
+counted in one of them and not the other. We have published the family
+table as the source of truth and we have not written a single headline
+percentage that we cannot reproduce from the rows.
 
 Second, and more importantly, **75 percent coverage of a control catalog
 is not the same as an audited control environment.** The mapping says which
@@ -460,14 +466,17 @@ These are the things a reviewer should weigh most heavily.
   deflection rates are estimates. The table below shows the arithmetic; it
   does not show a prediction, because we have no basis for one.
 * **Two figures in our own working notes did not reconcile, and we did not
-  paper over it.** The notes mixed two different denominators: the city's
+  paper over it.** The notes mixed two different denominators. The city's
   75/25 split applies to resident-submitted intake (694,000 requests), not
-  to all inbound calls (925,000). Applying it to the wrong base changes the
-  staff-handled call count by about 173,000 calls a year. The notes also
-  implied a per-agent call rate that does not follow from 925,000 calls
-  across 75 to 80 agents at any plausible shift length. The table below
-  uses one denominator, stated in the text, and the arithmetic is in
-  `src/roi.py` so you can substitute your own.
+  to all inbound calls (925,000), and applying it to the wrong base changes
+  the staff-handled call count by about 173,000 calls a year. Separately,
+  the recovered-hours figure in the notes was computed against the
+  staff-handled calls before deflection, while the deflection table in the
+  same document was computed after it. At the 40 percent case those are
+  23,125 hours and 18,500 hours, and the document contained both without
+  reconciling them. The table below uses one denominator, stated in the
+  text, and the arithmetic is in `src/roi.py` so you can substitute your
+  own.
 * **Model identifiers in the proposal were point-in-time.** A named model
   version in an RFI is stale within months. The design makes model choice
   configuration, with an evaluation harness and a promotion gate in front of

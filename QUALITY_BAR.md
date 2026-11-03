@@ -76,6 +76,12 @@ vendor and product names.
 
 - **Threshold:** no email address, no phone number, and no social security
   number in any file in the repository.
+- **Scope, stated precisely:** this gate scans the working tree, not the
+  repository history. A commit author's name and email live in the git
+  metadata, which is inherent to publishing under your own identity and is
+  visible on every public repository. What the gate guarantees is that no
+  *file* in the tree carries a personal identifier, which is where a leak
+  from source material would actually land.
 - **Why:** this repository is public and permanent. The subjects of the
   city's 311 calls are residents, and the people who appear in a municipal
   CRM's documentation are city staff and vendor contacts. None of them
@@ -233,10 +239,17 @@ in the README rather than quietly corrected:
    requests), not to all inbound calls (925,000). Applying it to the wrong
    base changes the staff-handled count by about 173,000 calls a year. The
    published table uses one denominator, and it is named.
-2. **A control coverage summary that did not match its own table.** The
+2. **A recovered-hours figure computed against the wrong base.** The
+   working notes computed the workspace saving against the staff-handled
+   calls *before* deflection, while the deflection table in the same
+   document computed against the calls *after* it. At the 40 percent case
+   those are 23,125 hours and 18,500 hours, and both appeared in the
+   document without being reconciled.
+3. **A control coverage summary that did not match its own table.** The
    summary claimed 174 of 232 controls; the family rows summed to 171 of
-   214. The discrepancy came from including the inherited physical-protection
-   family in one denominator and not the other.
+   214. The two cannot both come from the same rows, and the difference is
+   consistent with the inherited physical-protection family having been
+   counted in one and not the other.
 
 We could have published either number in either case and nobody reading the
 document would have known. That is precisely the reason we publish the
