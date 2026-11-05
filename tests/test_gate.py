@@ -569,10 +569,22 @@ class TestGateIgnoresReaderDirectories:
         assert proc.returncode == 0, proc.stdout
 
     def test_virtual_environment_in_a_source_archive(self, tmp_path: Path) -> None:
+        # A source archive holds the tracked files and no .git. Copying the
+        # whole working tree would also copy whatever the person running
+        # the tests has lying around untracked, which no archive contains.
         repo = tmp_path / "repo"
-        shutil.copytree(
-            REPO_ROOT, repo, ignore=shutil.ignore_patterns(".git", "__pycache__", ".pytest_cache")
-        )
+        if (REPO_ROOT / ".git").exists():
+            listed = subprocess.run(
+                ["git", "ls-files", "-z"], cwd=REPO_ROOT, capture_output=True, check=True
+            ).stdout.decode("utf-8")
+            for name in filter(None, listed.split("\0")):
+                if (REPO_ROOT / name).is_file():
+                    (repo / name).parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(REPO_ROOT / name, repo / name)
+        else:
+            shutil.copytree(
+                REPO_ROOT, repo, ignore=shutil.ignore_patterns("__pycache__", ".pytest_cache")
+            )
         self._plant(repo, with_pyvenv_cfg=True)
         proc = self._gate(repo)
         assert proc.returncode == 0, proc.stdout
