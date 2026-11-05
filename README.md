@@ -119,6 +119,7 @@ G5 mermaid           PASS  2 diagram(s) well formed
 G6 secrets           PASS  no credential material
 G7 roi consistency   PASS  4 scenario row(s) match src/roi.py
 G8 prose style       PASS  house style holds
+G10 control coverage PASS  18 families sum to 171 of 214 (79.9 percent); prose agrees
 G9 no traceback      PASS  all checks clean
 ```
 
@@ -347,17 +348,20 @@ part of a municipal proposal that most often turns out to be missing.
 | SI | System and Information Integrity | 14 of 17 | Guardrails, WAF, data discovery, signed log chains, integrity monitoring |
 | SR | Supply Chain Risk Management | 5 of 8 | SBOM, dependency scanning, provider attestations, vendor review |
 
-**Coverage is about 75 percent of applicable controls, and that is a
-target, not a certification.** Two honest notes on the table above. First,
-the family rows we wrote during the response sum to 171 of 214 controls
-addressed, while the summary line we wrote beside them claimed 174 of 232.
-The two numbers cannot both come from the same rows, and the difference is
-consistent with the inherited physical-protection family having been
-counted in one of them and not the other. We have published the family
-table as the source of truth and we have not written a single headline
-percentage that we cannot reproduce from the rows.
+**The rows sum to 171 of 214 applicable controls addressed, which is 79.9
+percent coverage, and that is a target, not a certification.** The
+inherited physical-protection family is left out of both sides of the
+ratio. Two honest notes on the table above. First, the summary line we
+wrote beside the rows during the response claimed 174 of 232. The two
+numbers cannot both come from the same rows, and the difference is
+consistent with the inherited family having been counted in one of them
+and not the other. We publish the family table as the source of truth.
+An earlier version of this README still carried the retracted summary's
+75 percent beside the corrected rows; gate check G10 now sums the table
+and fails the build if any coverage figure in the prose disagrees with
+it.
 
-Second, and more importantly, **75 percent coverage of a control catalog
+Second, and more importantly, **79.9 percent coverage of a control catalog
 is not the same as an audited control environment.** The mapping says which
 architectural element carries each control. It does not say the control
 operates effectively for twelve months, because that requires an observation
@@ -566,7 +570,7 @@ EVALUATION.md        how we would evaluate the system, with thresholds
 QUALITY_BAR.md       every threshold we set, and why we set it there
 LICENSE              MIT
 src/roi.py           the deflection arithmetic, pure and dependency-free
-scripts/gate.py      the quality gate: nine checks, a table, and an exit code
+scripts/gate.py      the quality gate: ten checks, a table, and an exit code
 tests/               unit tests for the arithmetic and for the gate's detectors
 .github/workflows/   CI: tests first, then the gate as the final step
 ```
@@ -577,7 +581,7 @@ This repository documents a proposal. It is not a city system, it does not
 talk to any city system, and it contains no city data.
 
 * **No resident data, no city data, no credentials.** Nothing here came
-  from a production database. The gate checks every file for personal data
+  from a production database. The gate checks every tracked file for personal data
   and for credential material on every run.
 * **No outreach.** The repository does not contact any system, service, or
   person. The gate and the tests run entirely offline.

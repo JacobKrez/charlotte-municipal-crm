@@ -24,12 +24,14 @@ import pytest
 from scripts import gate
 from scripts.gate import (
     REQUIRED_README_SECTIONS,
+    coverage_claim_drift,
     detect_forbidden_commercial,
     detect_mermaid_issues,
     detect_pii,
     detect_secrets,
     detect_style,
     missing_readme_sections,
+    parse_control_table,
     parse_roi_table,
 )
 
@@ -435,6 +437,18 @@ class TestGateCanFail:
         assert proc.returncode == 1
         assert "G7 roi consistency" in proc.stdout
 
+    def test_catches_a_coverage_figure_drifting_from_the_table(self, tmp_path: Path) -> None:
+        repo = self._clone(tmp_path)
+        readme = repo / "README.md"
+        text = readme.read_text(encoding="utf-8")
+        readme.write_text(
+            text.replace("| AC | Access Control | 21 of 25 |", "| AC | Access Control | 24 of 25 |"),
+            encoding="utf-8",
+        )
+        proc = self._run(repo)
+        assert proc.returncode == 1
+        assert "G10 control coverage" in proc.stdout
+
     def test_catches_credential_material(self, tmp_path: Path) -> None:
         repo = self._clone(tmp_path)
         leak = frag("sk-", "abcdefghijklmnopqrstuvwxyz012345")
@@ -471,3 +485,106 @@ class TestGateCanFail:
         proc = self._run(repo)
         assert proc.returncode == 1
         assert "G1 required files" in proc.stdout
+
+
+# ---------------------------------------------------------------------------
+# Control coverage (G10)
+# ---------------------------------------------------------------------------
+
+
+class TestControlCoverage:
+    TABLE = (
+        "| Family | Name | Controls addressed | Primary implementation |\n"
+        "|---|---|---|---|\n"
+        "| AC | Access Control | 3 of 4 | x |\n"
+        "| PE | Physical | inherited | y |\n"
+        "| SC | Comms | 5 of 6 | z |\n"
+    )
+
+    def test_parses_rows_and_skips_inherited(self) -> None:
+        assert parse_control_table(self.TABLE) == {"AC": (3, 4), "SC": (5, 6)}
+
+    def test_repository_table_sums_to_published_figure(self) -> None:
+        rows = parse_control_table((REPO_ROOT / "README.md").read_text(encoding="utf-8"))
+        assert sum(n for n, _ in rows.values()) == 171
+        assert sum(d for _, d in rows.values()) == 214
+
+    def test_accepts_figures_derived_from_the_table(self) -> None:
+        text = "Coverage is 8 of 10 controls, which is 80 percent coverage of controls."
+        assert coverage_claim_drift(text, 8, 10) == []
+
+    def test_flags_a_stale_percentage(self) -> None:
+        text = "Coverage is about 75 percent of applicable controls."
+        assert coverage_claim_drift(text, 171, 214)
+
+    def test_flags_a_stale_pair(self) -> None:
+        assert coverage_claim_drift("We address 174 of 232 controls.", 171, 214)
+
+    def test_retracted_pair_allowed_only_as_a_past_claim(self) -> None:
+        text = "The summary line claimed 174 of 232 controls."
+        assert coverage_claim_drift(text, 171, 214) == []
+
+    def test_ignores_sentences_about_other_things(self) -> None:
+        text = "The split is 75 percent staff-assisted. We answered 3 of 4 questions."
+        assert coverage_claim_drift(text, 171, 214) == []
+
+
+class TestGateIgnoresReaderDirectories:
+    """The scans cover published files, not whatever the reader creates.
+
+    A reviewer who makes a virtual environment called ``junk_venv`` or
+    ``env`` inside the checkout must still see a green gate, because
+    third-party packages contain email addresses, key-shaped test strings
+    and em dashes. Regression for a gate that went red on any venv not
+    named ``.venv`` or ``venv``.
+    """
+
+    @staticmethod
+    def _plant(repo: Path, with_pyvenv_cfg: bool) -> None:
+        junk = repo / "junk_venv" / "lib"
+        junk.mkdir(parents=True)
+        if with_pyvenv_cfg:
+            (repo / "junk_venv" / "pyvenv.cfg").write_text("home = /x\n", encoding="utf-8")
+        leak = frag("someone", "@", "example.com ") + frag("sk-", "abcdefghijklmnopqrstuvwxyz012345")
+        (junk / "pkg.py").write_text(f'KEY = "{leak}" \u2014\n', encoding="utf-8")
+        (junk / "README.md").write_text("Coverage is 75 percent of controls.\n", encoding="utf-8")
+
+    @staticmethod
+    def _gate(repo: Path) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            [sys.executable, "scripts/gate.py"],
+            cwd=repo,
+            capture_output=True,
+            text=True,
+            timeout=300,
+        )
+
+    def test_untracked_directory_in_a_git_checkout(self, tmp_path: Path) -> None:
+        if not (REPO_ROOT / ".git").exists():
+            pytest.skip("not a git checkout")
+        repo = tmp_path / "repo"
+        shutil.copytree(REPO_ROOT, repo, ignore=shutil.ignore_patterns("__pycache__", ".pytest_cache"))
+        self._plant(repo, with_pyvenv_cfg=False)
+        proc = self._gate(repo)
+        assert proc.returncode == 0, proc.stdout
+
+    def test_virtual_environment_in_a_source_archive(self, tmp_path: Path) -> None:
+        repo = tmp_path / "repo"
+        shutil.copytree(
+            REPO_ROOT, repo, ignore=shutil.ignore_patterns(".git", "__pycache__", ".pytest_cache")
+        )
+        self._plant(repo, with_pyvenv_cfg=True)
+        proc = self._gate(repo)
+        assert proc.returncode == 0, proc.stdout
+
+    def test_a_tracked_leak_is_still_caught(self, tmp_path: Path) -> None:
+        if not (REPO_ROOT / ".git").exists():
+            pytest.skip("not a git checkout")
+        repo = tmp_path / "repo"
+        shutil.copytree(REPO_ROOT, repo, ignore=shutil.ignore_patterns("__pycache__", ".pytest_cache"))
+        leak = frag("someone", "@", "example.com")
+        (repo / "notes.md").write_text(f"Contact {leak}\n", encoding="utf-8")
+        subprocess.run(["git", "add", "notes.md"], cwd=repo, check=True)
+        proc = self._gate(repo)
+        assert proc.returncode == 1
+        assert "G3 personal data" in proc.stdout

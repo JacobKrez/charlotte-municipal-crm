@@ -22,12 +22,19 @@ G6  no secrets (keys, tokens, private key material)
 G7  the numbers published in the README match ``src/roi.py``
 G8  prose obeys the house style (no marketing vocabulary, no em dashes)
 G9  no traceback was produced by any earlier check
+G10 every control-coverage figure in the prose is derived from the
+    NIST family table in the README
 
 Scope of the scans
 ------------------
 
-Every file in the repository is scanned for personal data (G3) and for
-credential material (G6). The commercial-term scan (G2) and the house-style
+Every file git tracks is scanned for personal data (G3) and for
+credential material (G6). The scans read ``git ls-files``, not the
+directory tree, so a reviewer's virtual environment or scratch directory,
+whatever it is called, is never mistaken for published content. On a
+checkout with no ``.git`` (a source archive) the scans fall back to
+walking the tree and skip the usual cache directories and any directory
+that holds a ``pyvenv.cfg``. The commercial-term scan (G2) and the house-style
 scan (G8) skip exactly one file, ``scripts/gate.py``, because that file
 necessarily contains the literal strings those two checks look for. There
 is no other exemption. The test suite is scanned like any other file, which
@@ -53,6 +60,7 @@ from __future__ import annotations
 import argparse
 import os
 import re
+import subprocess
 import sys
 import traceback
 from collections import Counter
@@ -225,6 +233,13 @@ BANNED_VOCABULARY: tuple[str, ...] = (
 #: The em dash. House style uses commas, colons, or parentheses instead.
 EM_DASH = "\u2014"
 
+#: Control-coverage figures that were published once and then retracted,
+#: because they do not reproduce from the family table. Each may appear
+#: only in a sentence that reports it as a past claim (the sentence must
+#: contain the word "claimed"). Any other coverage figure must equal the
+#: table sum. See G10.
+RETRACTED_COVERAGE_CLAIMS: frozenset[tuple[int, int]] = frozenset({(174, 232)})
+
 #: Mermaid diagram keywords that may open a diagram block.
 MERMAID_HEADERS: frozenset[str] = frozenset(
     {
@@ -299,13 +314,40 @@ def strip_allowlist_regions(text: str) -> str:
     return "".join(out)
 
 
+def _candidate_files(repo: Path) -> list[Path]:
+    """Files that belong to the repository, as opposed to the reader's machine.
+
+    In a git checkout this is ``git ls-files``: exactly what is published.
+    A virtual environment or scratch directory the reader creates is
+    untracked and therefore never scanned, whatever it is named. Without
+    ``.git`` (a source archive), walk the tree and skip cache directories
+    and anything that looks like a virtual environment.
+    """
+    if (repo / ".git").exists():
+        try:
+            listed = subprocess.run(
+                ["git", "ls-files", "-z"],
+                cwd=repo,
+                capture_output=True,
+                check=True,
+            ).stdout.decode("utf-8")
+            return sorted(repo / name for name in listed.split("\0") if name)
+        except (OSError, subprocess.CalledProcessError):
+            pass
+    venvs = [cfg.parent for cfg in repo.rglob("pyvenv.cfg")]
+    return [
+        path
+        for path in sorted(repo.rglob("*"))
+        if not any(part in SCAN_SKIP_DIRS for part in path.relative_to(repo).parts)
+        and not any(venv in path.parents for venv in venvs)
+    ]
+
+
 def iter_scannable_files(repo: Path = REPO, exclude: Iterable[Path] = ()) -> Iterable[Path]:
-    """Yield every file the content scans should look at."""
+    """Yield every published text file the content scans should look at."""
     excluded = set(exclude)
-    for path in sorted(repo.rglob("*")):
+    for path in _candidate_files(repo):
         if not path.is_file():
-            continue
-        if any(part in SCAN_SKIP_DIRS for part in path.parts):
             continue
         if path in excluded:
             continue
@@ -465,6 +507,59 @@ def parse_roi_table(text: str) -> dict[float, dict[str, float]]:
             "total_fte": float(match.group("fte")),
         }
     return rows
+
+
+def parse_control_table(text: str) -> dict[str, tuple[int, int]]:
+    """Parse the NIST family table: family code to (addressed, applicable).
+
+    Rows marked ``inherited`` carry no count and are left out of both
+    sides of the ratio, which is how the published 171 of 214 is formed.
+    """
+    pattern = re.compile(
+        r"^\|\s*(?P<family>[A-Z]{2})\s*\|[^|\n]*\|\s*(?P<num>\d+) of (?P<den>\d+)\s*\|",
+        re.MULTILINE,
+    )
+    return {
+        m.group("family"): (int(m.group("num")), int(m.group("den")))
+        for m in pattern.finditer(text)
+    }
+
+
+def coverage_claim_drift(
+    text: str, addressed: int, applicable: int, path: str = "text"
+) -> list[str]:
+    """Return every coverage figure in prose that does not come from the table.
+
+    Prose is split into sentences (table rows and code blocks removed).
+    In any sentence that mentions controls, an ``N of M`` pair must equal
+    the table sum, unless it is a listed retracted claim reported as such.
+    In any sentence that mentions both controls and coverage, a percentage
+    must be within half a point of the table percentage.
+    """
+    expected_pct = 100.0 * addressed / applicable
+    prose = re.sub(r"```.*?```", " ", text, flags=re.DOTALL)
+    prose = "\n".join(line for line in prose.splitlines() if not line.lstrip().startswith("|"))
+    sentences = re.split(r"(?<=[.!?])\s+|\n\s*\n", prose)
+    drift: list[str] = []
+    for sentence in sentences:
+        sentence = " ".join(sentence.split())
+        lower = sentence.lower()
+        if "control" not in lower:
+            continue
+        for m in re.finditer(r"\b(\d+)\s+of\s+(\d+)\b", sentence):
+            pair = (int(m.group(1)), int(m.group(2)))
+            if pair == (addressed, applicable):
+                continue
+            if pair in RETRACTED_COVERAGE_CLAIMS and "claimed" in lower:
+                continue
+            drift.append(f"{path}: '{m.group(0)}' but the table sums to {addressed} of {applicable}")
+        if "coverage" in lower:
+            for m in re.finditer(r"\b(\d+(?:\.\d+)?)\s*(?:percent|%)", sentence):
+                if abs(float(m.group(1)) - expected_pct) > 0.5:
+                    drift.append(
+                        f"{path}: '{m.group(0)}' but the table gives {expected_pct:.1f} percent"
+                    )
+    return drift
 
 
 # ---------------------------------------------------------------------------
@@ -662,6 +757,30 @@ def gate_prose_style() -> GateResult:
     return GateResult("G8 prose style", "PASS", "house style holds")
 
 
+def gate_control_coverage() -> GateResult:
+    """G10: every control-coverage figure in prose is derived from the table."""
+    readme = REPO / "README.md"
+    if not readme.exists():
+        return GateResult("G10 control coverage", "FAIL", "README.md missing")
+    rows = parse_control_table(read_text(readme))
+    if not rows:
+        return GateResult("G10 control coverage", "FAIL", "no NIST family table found in README.md")
+    addressed = sum(num for num, _ in rows.values())
+    applicable = sum(den for _, den in rows.values())
+    drift: list[str] = []
+    for path in iter_scannable_files(exclude=STYLE_SCAN_EXCLUSIONS):
+        if path.suffix == ".md":
+            drift.extend(coverage_claim_drift(read_text(path), addressed, applicable, rel(path)))
+    if drift:
+        return GateResult("G10 control coverage", "FAIL", "; ".join(drift[:4]))
+    return GateResult(
+        "G10 control coverage",
+        "PASS",
+        f"{len(rows)} families sum to {addressed} of {applicable} "
+        f"({100.0 * addressed / applicable:.1f} percent); prose agrees",
+    )
+
+
 def gate_no_traceback() -> GateResult:
     """G9: no earlier check produced a Python traceback."""
     return GateResult("G9 no traceback", "PASS", "all checks clean")
@@ -676,6 +795,7 @@ CHECKS: tuple[tuple[str, Callable[[], GateResult]], ...] = (
     ("G6 secrets", gate_no_secrets),
     ("G7 roi consistency", gate_roi_consistency),
     ("G8 prose style", gate_prose_style),
+    ("G10 control coverage", gate_control_coverage),
     ("G9 no traceback", gate_no_traceback),
 )
 

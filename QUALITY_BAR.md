@@ -193,6 +193,24 @@ game-changing, cutting-edge, seamless, world-class, leverage, synergy,
 empower, unlock, delight, robust, best-in-class.
 <!-- gate:allowlist-end -->
 
+### G10: control-coverage figures are derived from the table
+
+- **Threshold:** the NIST family table in the README is summed, and every
+  coverage figure in any tracked Markdown file agrees with that sum. In a
+  sentence that mentions controls, an `N of M` pair must equal the table
+  sum. In a sentence that mentions controls and coverage, a percentage must
+  be within half a point of the table percentage. The one retracted pair
+  (174 of 232) may appear only in a sentence that reports it as a past
+  claim.
+- **Why this check exists:** after we corrected the family rows and wrote
+  that we would not publish a headline we could not reproduce from them,
+  the README still said coverage was about 75 percent, which was the
+  retracted summary's figure. The rows give 79.9 percent. Nothing caught
+  it because G7 only covered the deflection table. This is the same
+  transcription failure G7 exists for, in a different table.
+- **What happens below it:** the build fails and quotes the figure and the
+  value the table gives.
+
 ### G9: no traceback
 
 - **Threshold:** no check raised an unhandled exception.
@@ -253,8 +271,10 @@ in the README rather than quietly corrected:
 
 We could have published either number in either case and nobody reading the
 document would have known. That is precisely the reason we publish the
-family table as the source of truth, decline to write a headline percentage
-we cannot reproduce from the rows, and say here what happened.
+family table as the source of truth and say here what happened. Saying it
+was not enough: the README kept the retracted 75 percent headline after
+the rows were corrected, until G10 made the table sum the only source a
+coverage figure can come from.
 
 ### On claims and evidence
 
@@ -291,11 +311,12 @@ them in a few seconds.
 |---|---|
 | The repository contains the required files | G1, file existence |
 | No commercial terms or competitor names are published | G2, pattern scan over every published file |
-| No personal identifiers are published | G3, shape-based pattern scan over every file |
+| No personal identifiers are published | G3, shape-based pattern scan over every tracked file |
 | The README has every required section | G4, heading parse |
 | The diagrams render | G5, structural validation of every mermaid block |
-| No credential material is published | G6, pattern scan over every file |
+| No credential material is published | G6, pattern scan over every tracked file |
 | The published deflection numbers match the code | G7, recomputation from `src/roi.py` |
+| Control-coverage figures in prose match the family table | G10, sum of the table rows compared with every coverage figure in tracked Markdown |
 | The prose follows the house style | G8, pattern scan over every Markdown and Python file |
 | The arithmetic behaves as documented | The pytest suite, covering boundary conditions, invalid inputs, and the properties that must hold regardless of inputs |
 | The gate's own detectors work | The pytest suite, which tests each detector against inputs that must be flagged and inputs that must not, and which runs the gate against the repository end to end |
